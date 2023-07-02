@@ -5,6 +5,7 @@ const products = [
   { name: "Beans__:", country: "USA", cost: 2, instock: 5 },
   { name: "Cabbage:", country: "USA", cost: 1, instock: 8 },
 ];
+
 //=========Cart=============
 const Cart = (props) => {
   const { Card, Accordion, Button } = ReactBootstrap;
@@ -31,7 +32,7 @@ const useDataApi = (initialUrl, initialData) => {
       dispatch({ type: "FETCH_INIT" });
       try {
         const result = await axios(url);
-        console.log("FETCH FROM URl");
+        console.log("FETCH FROM URL");
         if (!didCancel) {
           dispatch({ type: "FETCH_SUCCESS", payload: result.data });
         }
@@ -48,6 +49,7 @@ const useDataApi = (initialUrl, initialData) => {
   }, [url]);
   return [state, setUrl];
 };
+
 const dataFetchReducer = (state, action) => {
   switch (action.type) {
     case "FETCH_INIT":
@@ -74,10 +76,10 @@ const dataFetchReducer = (state, action) => {
   }
 };
 
+//=========Product List=============
 const Products = (props) => {
   const [items, setItems] = React.useState(products);
   const [cart, setCart] = React.useState([]);
-  const [total, setTotal] = React.useState(0);
   const {
     Card,
     Accordion,
@@ -88,6 +90,7 @@ const Products = (props) => {
     Image,
     Input,
   } = ReactBootstrap;
+
   //  Fetch Data
   const { Fragment, useState, useEffect, useReducer } = React;
   const [query, setQuery] = useState("http://localhost:1337/api/products");
@@ -99,59 +102,81 @@ const Products = (props) => {
   );
   console.log(`Rendering Products ${JSON.stringify(data)}`);
   // Fetch Data
+
   const addToCart = (e) => {
     let name = e.target.name;
-    let item = items.filter((item) => item.name == name);
-    if (item[0].instock == 0) return;
-    console.log(`add to Cart ${JSON.stringify(item)}`);
-    setCart([...cart, ...item]);
-    let newItems = items.map((item) => {
-      if (item.name == name) item.instock--;
-      return item;
-    })
-    setItems(newItems);
-  };
-  const deleteCartItem = (index) => {
-    const itemRemoved = cart[index];
-    let newCart = cart.filter((item, i) => index != i);
-    setCart(newCart);
-    let newItems = [...items];
-    newItems = items.map ( item => {
-      if (item.name == itemRemoved.name) item.instock++;
-      return item;
-    } )
-    setItems(newItems);
+    let item = items.find((item) => item.name === name);
+    if (item.instock === 0) return;
+    setCart((prev) => [...prev, item]);
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.name === name) {
+          return { ...item, instock: item.instock - 1 };
+        } else {
+          return item;
+        }
+      })
+    );
   };
 
-
-  const photos = (index) => `https://picsum.photos/id/${index+1049}/50/50`;
+  const photos = (index) => `https://picsum.photos/id/${index + 1049}/200/200`;
 
   let list = items.map((item, index) => {
-
-
+    let cleanedName = item.name.replace(/[_:]+/g, "");
 
     return (
       <li key={index}>
-        <Image src={photos[index % 4]} width={70} roundedCircle></Image>
+        <Image src={photos(index)} width={70} roundedCircle></Image>
         <Button variant="primary" size="large">
-          {item.name}:{item.cost}
+          {cleanedName}: ${item.cost} - In Stock: {item.instock}
         </Button>
         <input name={item.name} type="submit" onClick={addToCart}></input>
       </li>
     );
   });
-  let cartList = cart.map((item, index) => {
+
+  //=========Cart List=============
+
+  let cartList = cart.reduce((acc, item) => {
+    let cleanedName = item.name.replace(/[_:]+/g, "");
+
+    // if the item is already in the accumulator, increment the count
+    if (acc[cleanedName]) {
+      acc[cleanedName].count++;
+    } else {
+      // else add the item to the accumulator
+      acc[cleanedName] = { ...item, count: 1 };
+    }
+
+    return acc;
+  }, {});
+
+  cartList = Object.entries(cartList).map((entry, index) => {
+    const [name, item] = entry;
+
+    const deleteItem = () => {
+      const index = cart.findIndex((cartItem) => cartItem.name.replace(/[_:]+/g, '') === name);
+      if (index !== -1) {
+        const newCart = [...cart];
+        newCart.splice(index, 1);
+        setCart(newCart);
+        const newItems = items.map((item) => {
+          if (item.name.replace(/[_:]+/g, '') === name) item.instock++;
+          return item;
+        });
+        setItems(newItems);
+      }
+    };
+    
     return (
       <Card key={index}>
         <Card.Header>
           <Accordion.Toggle as={Button} variant="link" eventKey={1 + index}>
-            {item.name}
+            {name}: {item.count} item(s)
           </Accordion.Toggle>
+          <Button onClick={deleteItem} variant="danger">Remove</Button>
         </Card.Header>
-        <Accordion.Collapse
-          onClick={() => deleteCartItem(index)}
-          eventKey={1 + index}
-        >
+        <Accordion.Collapse eventKey={1 + index}>
           <Card.Body>
             $ {item.cost} from {item.country}
           </Card.Body>
@@ -160,20 +185,37 @@ const Products = (props) => {
     );
   });
 
-
-
-
-
-
   let finalList = () => {
+    let cartItems = cart.reduce((acc, item) => {
+      let cleanedName = item.name.replace(/[_:]+/g, "");
+
+      if (acc[cleanedName]) {
+        acc[cleanedName].count++;
+        acc[cleanedName].totalCost += item.cost;
+      } else {
+        acc[cleanedName] = {
+          ...item,
+          count: 1,
+          totalCost: item.cost,
+        };
+      }
+
+      return acc;
+    }, {});
+
+  //=========Checkout List=============
+
     let total = checkOut();
-    let final = cart.map((item, index) => {
+
+    let final = Object.entries(cartItems).map((entry, index) => {
+      const [name, item] = entry;
       return (
         <div key={index} index={index}>
-          {item.name}
+          {name} total: $ {item.totalCost}
         </div>
       );
     });
+
     return { final, total };
   };
 
@@ -184,51 +226,60 @@ const Products = (props) => {
     console.log(`total updated to ${newTotal}`);
     return newTotal;
   };
-  // TODO: implement the restockProducts function
-  const restockProducts = (url) => {
-    doFetch(url);
-    let newItems = data.map((item) => {
-      let { name, country, cost, instock } = item;
-      return { name, country, cost, instock };
-    });
-    setItems([...items, ...newItems]);
+
+
+  //=========Restock Function=============
+
+  const restockProducts = async (url) => {
+    await doFetch(url);
+    if (data && data.data.length > 0) {
+      let newItems = data.data.map((item) => {
+        let { name, country, cost, instock } = item.attributes;
+        return { name, country, cost, instock };
+      });
+      setItems([...items, ...newItems]);
+    }
   };
+  
+//=========Render App=============
 
   return (
     <Container>
-      <Row>
-        <Col>
-          <h1>Product List</h1>
-          <ul style={{ listStyleType: "none" }}>{list}</ul>
-        </Col>
-        <Col>
-          <h1>Cart Contents</h1>
-          <Accordion>{cartList}</Accordion>
-        </Col>
-        <Col>
-          <h1>CheckOut </h1>
-          <Button onClick={checkOut}>CheckOut $ {finalList().total}</Button>
-          <div> {finalList().total > 0 && finalList().final} </div>
-        </Col>
-      </Row>
-      <Row>
-        <form
-          onSubmit={(event) => {
-            restockProducts(`http://localhost:1337/${query}`);
-            console.log(`Restock called on ${query}`);
-            event.preventDefault();
-          }}
-        >
-          <input
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <button type="submit">ReStock Products</button>
-        </form>
-      </Row>
+    <Row>
+      <Col>
+        <h1>Product List</h1>
+        <ul style={{ listStyleType: "none" }}>{list}</ul>
+      </Col>
+      <Col>
+        <h1>Cart Contents</h1>
+        <Accordion>{cartList}</Accordion>
+      </Col>
+      <Col>
+        <h1>CheckOut </h1>
+        <Button onClick={checkOut}>CheckOut</Button>
+        <div>Total: $ {finalList().total}</div>
+        {finalList().final}
+      </Col>
+    </Row>
+    <Row>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();  // prevent the form from causing a page refresh
+          restockProducts(`http://localhost:1337/${query}`);
+          console.log(`Restock called on ${query}`);
+        }}
+      >
+        <input
+          type="text"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <button type="submit">ReStock Products</button>
+      </form>
+    </Row>
     </Container>
   );
 };
+
 // ========================================
 ReactDOM.render(<Products />, document.getElementById("root"));
